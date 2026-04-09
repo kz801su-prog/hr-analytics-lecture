@@ -1,12 +1,13 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Question, TrainingMaterial, TestResult } from "../types";
 
 const getAIClient = () => {
-  const manualKey = localStorage.getItem('sb_manual_api_key');
+  const manualKey = localStorage.getItem("sb_manual_api_key");
   const apiKey = manualKey || process.env.API_KEY;
   if (!apiKey) {
-    console.warn("API_KEY is not defined (checked localStorage and process.env)");
+    console.warn(
+      "API_KEY is not defined (checked localStorage and process.env)",
+    );
   }
   return new GoogleGenAI({ apiKey: apiKey || "" });
 };
@@ -25,24 +26,46 @@ const handleApiError = async (error: any) => {
   const errorStatus = error?.status;
 
   // Check for specific error types
-  if (errorMsg.includes("API key not valid") || errorMsg.includes("API_KEY_INVALID")) {
-    alert("❌ APIキーが無効です。\n\n正しいAPIキーを設定してください。\n\nGoogle AI Studioで新しいキーを作成できます:\nhttps://aistudio.google.com/apikey");
+  if (
+    errorMsg.includes("API key not valid") ||
+    errorMsg.includes("API_KEY_INVALID")
+  ) {
+    alert(
+      "❌ APIキーが無効です。\n\n正しいAPIキーを設定してください。\n\nGoogle AI Studioで新しいキーを作成できます:\nhttps://aistudio.google.com/apikey",
+    );
     if ((window as any).aistudio) {
       await (window as any).aistudio.openSelectKey();
     }
-  } else if (errorMsg.includes("Requested entity was not found") || errorStatus === 404) {
-    alert("❌ 指定されたモデルが見つかりません。\n\nモデル名を確認するか、別のモデルを選択してください。\n\nAPIキーの権限も確認してください。");
+  } else if (
+    errorMsg.includes("Requested entity was not found") ||
+    errorStatus === 404
+  ) {
+    alert(
+      "❌ 指定されたモデルが見つかりません。\n\nモデル名を確認するか、別のモデルを選択してください。\n\nAPIキーの権限も確認してください。",
+    );
     if ((window as any).aistudio) {
       await (window as any).aistudio.openSelectKey();
     }
-  } else if (errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED") || errorStatus === 429) {
-    alert("❌ APIの使用量制限に達しました。\n\n・しばらく待ってから再試行してください\n・Google AI Studioでクォータを確認してください\n・別のAPIキーを使用してください");
+  } else if (
+    errorMsg.includes("quota") ||
+    errorMsg.includes("RESOURCE_EXHAUSTED") ||
+    errorStatus === 429
+  ) {
+    alert(
+      "❌ APIの使用量制限に達しました。\n\n・しばらく待ってから再試行してください\n・Google AI Studioでクォータを確認してください\n・別のAPIキーを使用してください",
+    );
   } else if (errorMsg.includes("PERMISSION_DENIED") || errorStatus === 403) {
-    alert("❌ APIキーに必要な権限がありません。\n\nGoogle AI Studioで新しいキーを作成してください。");
+    alert(
+      "❌ APIキーに必要な権限がありません。\n\nGoogle AI Studioで新しいキーを作成してください。",
+    );
   } else if (errorMsg.includes("network") || errorMsg.includes("fetch")) {
-    alert("❌ ネットワークエラーが発生しました。\n\nインターネット接続を確認してください。");
+    alert(
+      "❌ ネットワークエラーが発生しました。\n\nインターネット接続を確認してください。",
+    );
   } else {
-    alert(`❌ AI分析中にエラーが発生しました。\n\nエラー: ${errorMsg}\n\nブラウザのコンソール(F12)で詳細を確認してください。\n\n対処方法:\n1. APIキーを再設定\n2. ネットワーク接続を確認\n3. 資料のサイズを減らす`);
+    alert(
+      `❌ AI分析中にエラーが発生しました。\n\nエラー: ${errorMsg}\n\nブラウザのコンソール(F12)で詳細を確認してください。\n\n対処方法:\n1. APIキーを再設定\n2. ネットワーク接続を確認\n3. 資料のサイズを減らす`,
+    );
   }
 
   throw error;
@@ -53,32 +76,34 @@ export const generateQuestionsFromMaterials = async (
   content: string,
   materials: TrainingMaterial[],
   count: number = 20,
-  difficulty: 'Standard' | 'Difficult' | 'MAX' = 'Standard',
-  modelName: string = 'gemini-2.0-flash-exp'
+  difficulty: "Standard" | "Difficult" | "MAX" = "Standard",
+  modelName: string = "gemini-2.0-flash-exp",
 ): Promise<Question[]> => {
-  console.log('=== AI問題生成を開始 ===');
-  console.log('モデル:', modelName);
-  console.log('問題数:', count);
-  console.log('難易度:', difficulty);
-  console.log('資料数:', materials.length);
+  console.log("=== AI問題生成を開始 ===");
+  console.log("モデル:", modelName);
+  console.log("問題数:", count);
+  console.log("難易度:", difficulty);
+  console.log("資料数:", materials.length);
 
   const ai = getAIClient();
 
   // Check if API key is available
-  const manualKey = localStorage.getItem('sb_manual_api_key');
+  const manualKey = localStorage.getItem("sb_manual_api_key");
   const apiKey = manualKey || process.env.API_KEY;
 
-  if (!apiKey || apiKey.trim() === '') {
-    console.error('❌ APIキーが設定されていません');
-    throw new Error('APIキーが設定されていません。キー設定ボタンからAPIキーを入力してください。');
+  if (!apiKey || apiKey.trim() === "") {
+    console.error("❌ APIキーが設定されていません");
+    throw new Error(
+      "APIキーが設定されていません。キー設定ボタンからAPIキーを入力してください。",
+    );
   }
 
-  console.log('✓ APIキー確認完了 (長さ:', apiKey.length, '文字)');
+  console.log("✓ APIキー確認完了 (長さ:", apiKey.length, "文字)");
 
   const difficultyInstruction = {
-    'Standard': '一般常識や基礎知識を問う、標準的な難易度にしてください。',
-    'Difficult': '応用力や深い理解を問う、やや難しい難易度にしてください。',
-    'MAX': '専門家レベルの高度な洞察や、ひっかけ等も含んだ、極めて難しい難易度にしてください。'
+    Standard: "一般常識や基礎知識を問う、標準的な難易度にしてください。",
+    Difficult: "応用力や深い理解を問う、やや難しい難易度にしてください。",
+    MAX: "専門家レベルの高度な洞察や、ひっかけ等も含んだ、極めて難しい難易度にしてください。",
   }[difficulty];
 
   const parts: any[] = [
@@ -90,7 +115,8 @@ export const generateQuestionsFromMaterials = async (
 
 上記の内容および添付された資料から、受講者の理解度を深く測定するための試験問題を作成してください。
 指定された問題数: ${count}問
-` }
+`,
+    },
   ];
 
   // Process materials with validation - skip invalid ones
@@ -101,27 +127,35 @@ export const generateQuestionsFromMaterials = async (
     try {
       // Validate material data
       if (!m.data) {
-        console.warn(`資料 ${index + 1} (${m.name}): データが空です。スキップします。`);
+        console.warn(
+          `資料 ${index + 1} (${m.name}): データが空です。スキップします。`,
+        );
         skippedMaterialCount++;
         return;
       }
 
-      if (!m.data.includes(',')) {
-        console.warn(`資料 ${index + 1} (${m.name}): データ形式が不正です(カンマが見つかりません)。スキップします。`);
+      if (!m.data.includes(",")) {
+        console.warn(
+          `資料 ${index + 1} (${m.name}): データ形式が不正です(カンマが見つかりません)。スキップします。`,
+        );
         skippedMaterialCount++;
         return;
       }
 
-      const dataParts = m.data.split(',');
+      const dataParts = m.data.split(",");
       if (dataParts.length < 2 || !dataParts[1]) {
-        console.warn(`資料 ${index + 1} (${m.name}): Base64データが見つかりません。スキップします。`);
+        console.warn(
+          `資料 ${index + 1} (${m.name}): Base64データが見つかりません。スキップします。`,
+        );
         skippedMaterialCount++;
         return;
       }
 
       // Validate MIME type
-      if (!m.mimeType || m.mimeType.trim() === '') {
-        console.warn(`資料 ${index + 1} (${m.name}): MIMEタイプが不正です。スキップします。`);
+      if (!m.mimeType || m.mimeType.trim() === "") {
+        console.warn(
+          `資料 ${index + 1} (${m.name}): MIMEタイプが不正です。スキップします。`,
+        );
         skippedMaterialCount++;
         return;
       }
@@ -130,26 +164,32 @@ export const generateQuestionsFromMaterials = async (
       parts.push({
         inlineData: {
           mimeType: m.mimeType,
-          data: dataParts[1]
-        }
+          data: dataParts[1],
+        },
       });
       validMaterialCount++;
       console.log(`✓ 資料 ${index + 1} (${m.name}): 正常に追加されました。`);
-
     } catch (error) {
-      console.error(`❌ 資料 ${index + 1} (${m.name}): 処理中にエラーが発生しました。スキップします。`, error);
+      console.error(
+        `❌ 資料 ${index + 1} (${m.name}): 処理中にエラーが発生しました。スキップします。`,
+        error,
+      );
       skippedMaterialCount++;
     }
   });
 
   // Log summary
-  console.log(`\n📊 資料の処理完了: ${validMaterialCount}件が有効、${skippedMaterialCount}件をスキップしました。`);
+  console.log(
+    `\n📊 資料の処理完了: ${validMaterialCount}件が有効、${skippedMaterialCount}件をスキップしました。`,
+  );
 
   if (validMaterialCount === 0 && materials.length > 0) {
-    console.warn('⚠️ 警告: すべての資料が不適格でした。テキストコンテンツのみで問題を生成します。');
+    console.warn(
+      "⚠️ 警告: すべての資料が不適格でした。テキストコンテンツのみで問題を生成します。",
+    );
   }
 
-  console.log('\n🚀 Gemini APIを呼び出し中...');
+  console.log("\n🚀 Gemini APIを呼び出し中...");
 
   try {
     const response = await ai.models.generateContent({
@@ -176,40 +216,220 @@ export const generateQuestionsFromMaterials = async (
                 type: Type.ARRAY,
                 items: { type: Type.STRING },
                 minItems: 4,
-                maxItems: 4
+                maxItems: 4,
               },
               correctAnswer: { type: Type.INTEGER },
-              explanation: { type: Type.STRING }
+              explanation: { type: Type.STRING },
             },
-            required: ["id", "question", "options", "correctAnswer", "explanation"]
-          }
-        }
-      }
+            required: [
+              "id",
+              "question",
+              "options",
+              "correctAnswer",
+              "explanation",
+            ],
+          },
+        },
+      },
     });
 
-    console.log('✓ API応答を受信しました');
+    console.log("✓ API応答を受信しました");
 
     const rawText = response.text;
     if (!rawText) {
-      console.error('❌ AIからの応答が空です');
+      console.error("❌ AIからの応答が空です");
       throw new Error("AIからの応答が空です。");
     }
 
-    console.log('✓ 応答テキストの長さ:', rawText.length, '文字');
+    console.log("✓ 応答テキストの長さ:", rawText.length, "文字");
 
     const questions = JSON.parse(rawText.trim());
-    console.log('✓ 問題の解析完了:', questions.length, '問');
-    console.log('=== AI問題生成が正常に完了しました ===\n');
+    console.log("✓ 問題の解析完了:", questions.length, "問");
+    console.log("=== AI問題生成が正常に完了しました ===\n");
 
     return questions;
-
   } catch (e: any) {
-    console.error('❌ API呼び出しエラー:', e);
-    console.error('エラーの詳細:', {
+    console.error("❌ API呼び出しエラー:", e);
+    console.error("エラーの詳細:", {
       message: e?.message,
       status: e?.status,
       statusText: e?.statusText,
-      name: e?.name
+      name: e?.name,
+    });
+    return handleApiError(e);
+  }
+};
+
+export const regenerateQuestionFromMaterials = async (
+  title: string,
+  content: string,
+  materials: TrainingMaterial[],
+  existingQuestion: Question,
+  difficulty: "Standard" | "Difficult" | "MAX" = "Standard",
+  modelName: string = "gemini-2.0-flash-exp",
+): Promise<Question> => {
+  console.log("=== AI単問再生成を開始 ===");
+  console.log("モデル:", modelName);
+  console.log("難易度:", difficulty);
+  console.log("再生成対象ID:", existingQuestion.id);
+
+  const ai = getAIClient();
+  const manualKey = localStorage.getItem("sb_manual_api_key");
+  const apiKey = manualKey || process.env.API_KEY;
+
+  if (!apiKey || apiKey.trim() === "") {
+    console.error("❌ APIキーが設定されていません");
+    throw new Error(
+      "APIキーが設定されていません。キー設定ボタンからAPIキーを入力してください。",
+    );
+  }
+
+  const difficultyInstruction = {
+    Standard: "一般常識や基礎知識を問う、標準的な難易度にしてください。",
+    Difficult: "応用力や深い理解を問う、やや難しい難易度にしてください。",
+    MAX: "専門家レベルの高度な洞察や、ひっかけ等も含んだ、極めて難しい難易度にしてください。",
+  }[difficulty];
+
+  const parts: any[] = [
+    {
+      text: `
+研修タイトル: ${title}
+研修のメイン内容: ${content}
+難易度設定: ${difficulty} (${difficultyInstruction})
+
+現在の問題を1問だけ新しく書き換えます。
+元の問題内容:
+- 問題ID: ${existingQuestion.id}
+- 問題文: ${existingQuestion.question}
+- 選択肢: ${existingQuestion.options.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt}`).join(" | ")}
+- 正解: ${String.fromCharCode(65 + existingQuestion.correctAnswer)}
+- 解説: ${existingQuestion.explanation}
+
+同じ研修の内容に合う、新しく独立した1問を生成してください。既存の問題と意味的に重複しない、新しい問題文・選択肢・正解・解説を作成してください。
+出力は必ずJSONオブジェクト1件のみとし、以下のキーを含めてください。
+- id: ${existingQuestion.id}
+- question
+- options
+- correctAnswer
+- explanation
+`,
+    },
+  ];
+
+  let validMaterialCount = 0;
+  let skippedMaterialCount = 0;
+
+  materials.forEach((m, index) => {
+    try {
+      if (!m.data) {
+        console.warn(
+          `資料 ${index + 1} (${m.name}): データが空です。スキップします。`,
+        );
+        skippedMaterialCount++;
+        return;
+      }
+
+      if (!m.data.includes(",")) {
+        console.warn(
+          `資料 ${index + 1} (${m.name}): データ形式が不正です(カンマが見つかりません)。スキップします。`,
+        );
+        skippedMaterialCount++;
+        return;
+      }
+
+      const dataParts = m.data.split(",");
+      if (dataParts.length < 2 || !dataParts[1]) {
+        console.warn(
+          `資料 ${index + 1} (${m.name}): Base64データが見つかりません。スキップします。`,
+        );
+        skippedMaterialCount++;
+        return;
+      }
+
+      if (!m.mimeType || m.mimeType.trim() === "") {
+        console.warn(
+          `資料 ${index + 1} (${m.name}): MIMEタイプが不正です。スキップします。`,
+        );
+        skippedMaterialCount++;
+        return;
+      }
+
+      parts.push({
+        inlineData: {
+          mimeType: m.mimeType,
+          data: dataParts[1],
+        },
+      });
+      validMaterialCount++;
+      console.log(`✓ 資料 ${index + 1} (${m.name}): 正常に追加されました。`);
+    } catch (error) {
+      console.error(
+        `❌ 資料 ${index + 1} (${m.name}): 処理中にエラーが発生しました。スキップします。`,
+        error,
+      );
+      skippedMaterialCount++;
+    }
+  });
+
+  console.log(
+    `\n📊 資料の処理完了: ${validMaterialCount}件が有効、${skippedMaterialCount}件をスキップしました。`,
+  );
+
+  try {
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: { parts },
+      config: {
+        systemInstruction: `あなたはプロの教育設計者です。
+上記の研修内容に沿って、指定された条件を厳守し、JSONオブジェクトを1件だけ出力してください。
+1. 出力は純粋なJSONオブジェクトのみとする。
+2. idは必ず指定された値(${existingQuestion.id})を使うこと。
+3. 問題は4択形式とし、選択肢を4つ用意すること。
+4. correctAnswerは0, 1, 2, 3のいずれかとすること。
+5. explanationを必ず含めること。`,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            id: { type: Type.STRING },
+            question: { type: Type.STRING },
+            options: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              minItems: 4,
+              maxItems: 4,
+            },
+            correctAnswer: { type: Type.INTEGER },
+            explanation: { type: Type.STRING },
+          },
+          required: [
+            "id",
+            "question",
+            "options",
+            "correctAnswer",
+            "explanation",
+          ],
+        },
+      },
+    });
+
+    const rawText = response.text;
+    if (!rawText) {
+      console.error("❌ AIからの応答が空です");
+      throw new Error("AIからの応答が空です。");
+    }
+
+    const question = JSON.parse(rawText.trim());
+    question.id = question.id || existingQuestion.id;
+    console.log("✓ 単問再生成完了:", question);
+    return question;
+  } catch (e: any) {
+    console.error("❌ AI呼び出しエラー:", e);
+    console.error("エラーの詳細:", {
+      message: e?.message,
+      status: e?.status,
+      statusText: e?.statusText,
+      name: e?.name,
     });
     return handleApiError(e);
   }
@@ -220,8 +440,13 @@ export const analyzeIndividualPerformance = async (
   trainingTitle: string,
   pre: number,
   post: number,
-  totalQuestions: number = 20
-): Promise<{ analysis: string, advice: string, traits: string[], competencies: string[] }> => {
+  totalQuestions: number = 20,
+): Promise<{
+  analysis: string;
+  advice: string;
+  traits: string[];
+  competencies: string[];
+}> => {
   const ai = getAIClient();
   try {
     const prompt = `社員「${name}」の研修結果を心理学的・教育学的観点から分析してください。
@@ -236,7 +461,7 @@ export const analyzeIndividualPerformance = async (
 4. competencies: この研修を通じて見えた能力の強みや改善点を2つ（配列）。`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: "gemini-3-flash-preview",
       contents: prompt, // Simplified string format
       config: {
         responseMimeType: "application/json",
@@ -246,22 +471,22 @@ export const analyzeIndividualPerformance = async (
             analysis: { type: Type.STRING },
             advice: { type: Type.STRING },
             traits: { type: Type.ARRAY, items: { type: Type.STRING } },
-            competencies: { type: Type.ARRAY, items: { type: Type.STRING } }
+            competencies: { type: Type.ARRAY, items: { type: Type.STRING } },
           },
-          required: ["analysis", "advice", "traits", "competencies"]
-        }
-      }
+          required: ["analysis", "advice", "traits", "competencies"],
+        },
+      },
     });
 
     const text = response.text;
-    return JSON.parse(text || '{}');
+    return JSON.parse(text || "{}");
   } catch (e) {
     console.error("Individual Analysis Error:", e);
     return {
       analysis: "理解度の変化を記録しました。",
       advice: "復習を継続してください。",
       traits: ["継続力", "向上心", "着実性"],
-      competencies: ["基礎知識の習得", "自己学習への意欲"]
+      competencies: ["基礎知識の習得", "自己学習への意欲"],
     };
   }
 };
@@ -269,50 +494,65 @@ export const analyzeIndividualPerformance = async (
 export const analyzeHRCompetency = async (
   name: string,
   results: TestResult[],
-  customInstruction: string = ""
+  customInstruction: string = "",
 ): Promise<string> => {
   const ai = getAIClient();
 
   // チート検知分析
-  const cheatingFlags = results.map(r => {
-    const flags: string[] = [];
-    const totalQ = r.totalQuestions || 20;
-    const secPerQ = r.postAnswerTimeSec ? r.postAnswerTimeSec / totalQ : null;
+  const cheatingFlags = results
+    .map((r) => {
+      const flags: string[] = [];
+      const totalQ = r.totalQuestions || 20;
+      const secPerQ = r.postAnswerTimeSec ? r.postAnswerTimeSec / totalQ : null;
 
-    if (r.postAnswerTimeSec !== undefined && r.postAnswerTimeSec > 0) {
-      const mins = Math.floor(r.postAnswerTimeSec / 60);
-      const secs = r.postAnswerTimeSec % 60;
-      const timeStr = mins > 0 ? `${mins}分${secs}秒` : `${secs}秒`;
-      if (secPerQ !== null && secPerQ < 5) {
-        flags.push(`⚠️ 回答速度が異常に速い（${totalQ}問を${timeStr}で回答、平均${secPerQ.toFixed(1)}秒/問）。答え合わせ参照・カンニングの可能性が高い`);
-      } else if (secPerQ !== null && secPerQ < 10) {
-        flags.push(`⚠️ 回答速度がやや速い（${totalQ}問を${timeStr}で回答、平均${secPerQ.toFixed(1)}秒/問）。外部資料参照の可能性がある`);
+      if (r.postAnswerTimeSec !== undefined && r.postAnswerTimeSec > 0) {
+        const mins = Math.floor(r.postAnswerTimeSec / 60);
+        const secs = r.postAnswerTimeSec % 60;
+        const timeStr = mins > 0 ? `${mins}分${secs}秒` : `${secs}秒`;
+        if (secPerQ !== null && secPerQ < 5) {
+          flags.push(
+            `⚠️ 回答速度が異常に速い（${totalQ}問を${timeStr}で回答、平均${secPerQ.toFixed(1)}秒/問）。答え合わせ参照・カンニングの可能性が高い`,
+          );
+        } else if (secPerQ !== null && secPerQ < 10) {
+          flags.push(
+            `⚠️ 回答速度がやや速い（${totalQ}問を${timeStr}で回答、平均${secPerQ.toFixed(1)}秒/問）。外部資料参照の可能性がある`,
+          );
+        }
       }
-    }
-    if (r.preScore !== undefined && r.postScore !== undefined && r.postScore !== -1) {
-      const pre = r.preScore;
-      const post = r.postScore;
-      const totalQ2 = r.totalQuestions || Math.max(pre, post, 20);
-      if (pre >= totalQ2 * 0.9 && post >= totalQ2 * 0.9) {
-        flags.push(`⚠️ 事前・事後ともに満点近い高得点（事前${pre}点→事後${post}点/${totalQ2}問）。事前知識ではなく答え参照の可能性がある`);
+      if (
+        r.preScore !== undefined &&
+        r.postScore !== undefined &&
+        r.postScore !== -1
+      ) {
+        const pre = r.preScore;
+        const post = r.postScore;
+        const totalQ2 = r.totalQuestions || Math.max(pre, post, 20);
+        if (pre >= totalQ2 * 0.9 && post >= totalQ2 * 0.9) {
+          flags.push(
+            `⚠️ 事前・事後ともに満点近い高得点（事前${pre}点→事後${post}点/${totalQ2}問）。事前知識ではなく答え参照の可能性がある`,
+          );
+        }
       }
-    }
-    return flags.length > 0
-      ? `【${r.trainingTitle}】\n${flags.map(f => `  ${f}`).join('\n')}`
-      : null;
-  }).filter(Boolean);
+      return flags.length > 0
+        ? `【${r.trainingTitle}】\n${flags.map((f) => `  ${f}`).join("\n")}`
+        : null;
+    })
+    .filter(Boolean);
 
-  const historyText = results.map(r => {
-    const totalQ = r.totalQuestions || 20;
-    const timeTxt = r.postAnswerTimeSec
-      ? `（事後テスト回答時間: ${Math.floor(r.postAnswerTimeSec / 60)}分${r.postAnswerTimeSec % 60}秒 / ${totalQ}問）`
-      : '';
-    return `・研修: ${r.trainingTitle}, 事前: ${r.preScore}点, 事後: ${r.postScore}点 ${timeTxt}, AI個別評価: ${r.analysis}`;
-  }).join('\n');
+  const historyText = results
+    .map((r) => {
+      const totalQ = r.totalQuestions || 20;
+      const timeTxt = r.postAnswerTimeSec
+        ? `（事後テスト回答時間: ${Math.floor(r.postAnswerTimeSec / 60)}分${r.postAnswerTimeSec % 60}秒 / ${totalQ}問）`
+        : "";
+      return `・研修: ${r.trainingTitle}, 事前: ${r.preScore}点, 事後: ${r.postScore}点 ${timeTxt}, AI個別評価: ${r.analysis}`;
+    })
+    .join("\n");
 
-  const cheatingSection = cheatingFlags.length > 0
-    ? `\n【⚠️ 不正行為の疑い — 重要】\n以下の研修で、統計的に不自然な回答パターンが検出されました。深層心理学の観点から、なぜこのような「ズル」をしてしまうのか、その行動動機・認知的歪み・自己欺瞞のメカニズムを徹底的に分析してください：\n${cheatingFlags.join('\n')}\n`
-    : '';
+  const cheatingSection =
+    cheatingFlags.length > 0
+      ? `\n【⚠️ 不正行為の疑い — 重要】\n以下の研修で、統計的に不自然な回答パターンが検出されました。深層心理学の観点から、なぜこのような「ズル」をしてしまうのか、その行動動機・認知的歪み・自己欺瞞のメカニズムを徹底的に分析してください：\n${cheatingFlags.join("\n")}\n`
+      : "";
 
   const prompt = `
 あなたはプロの行動分析学者かつHRコンサルタントです。対象社員「${name}」の過去の学習履歴に基づき、深層的な能力管理レポートを作成してください。
@@ -323,7 +563,7 @@ ${cheatingSection}
 【最優先分析指示】
 この社員が「どのような状況」で、「どういう思考の癖（誤解・錯覚）」を持ち、「なぜ結果に繋がらない行動をとってしまうのか」を、論理的に解明してください。
 単なる励ましではなく、認知バイアスや行動パターンの歪みを鋭く指摘してください。
-${cheatingFlags.length > 0 ? '\n不正行為の疑いがある場合は、それを人格・動機・自己保存本能の観点から深層心理学的に分析し、独立したセクションとして必ず記載してください。' : ''}
+${cheatingFlags.length > 0 ? "\n不正行為の疑いがある場合は、それを人格・動機・自己保存本能の観点から深層心理学的に分析し、独立したセクションとして必ず記載してください。" : ""}
 
 ${customInstruction ? `【追加指示】\n${customInstruction}` : ""}
 
@@ -332,7 +572,7 @@ ${customInstruction ? `【追加指示】\n${customInstruction}` : ""}
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: "gemini-3-pro-preview",
       contents: prompt,
     });
     return response.text || "分析を生成できませんでした。";
