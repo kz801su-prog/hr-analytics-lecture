@@ -1,0 +1,8 @@
+{
+  "name": "研修講義 HR Analytics",
+  "description": "An AI-powered training management platform that generates 20-question pre/post-tests from documents, tracks employee growth across multiple sessions, and provides deep HR analytics using Gemini.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
