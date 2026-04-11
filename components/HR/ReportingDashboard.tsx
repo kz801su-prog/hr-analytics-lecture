@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { TestResult, Training, Employee, Role, DeepAnalysisRecord, WrongAnswerAnalysis, PsychApplication } from '../../types';
 import { analyzeHRCompetency } from '../../services/geminiService';
+import { HRIndividualManager } from './HRIndividualManager';
 
 interface ReportingDashboardProps {
   trainings: Training[];
@@ -36,7 +37,7 @@ const isCompleted = (result: TestResult | undefined): boolean => {
 };
 
 export const ReportingDashboard: React.FC<ReportingDashboardProps> = ({ trainings, results, employees, hrAnalyses, wrongAnswerAnalyses, onUpdateEmployeeRole, onRefresh, gasUrl, onUpdateGasUrl, clliqUrl, onUpdateClliqUrl, onSaveHRAnalysis, onRunManualAnalysis, onImpersonate, onOpenSelectKey, annualSummaries, psychApplications, onDeletePsychApplication }) => {
-  const [viewMode, setViewMode] = useState<'employees' | 'growth' | 'hr_mgmt' | 'setup' | 'deadlines'>('growth');
+  const [viewMode, setViewMode] = useState<'employees' | 'growth' | 'hr_mgmt' | 'setup' | 'deadlines' | 'individual'>('growth');
   const [localUrl, setLocalUrl] = useState(gasUrl);
   const [localClliqUrl, setLocalClliqUrl] = useState(clliqUrl);
   const [selectedResult, setSelectedResult] = useState<TestResult | null>(null);
@@ -60,6 +61,7 @@ export const ReportingDashboard: React.FC<ReportingDashboardProps> = ({ training
   const [hrAnalysisResult, setHrAnalysisResult] = useState<string>('');
   const [customInstruction, setCustomInstruction] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [selectedHrAnalysis, setSelectedHrAnalysis] = useState<DeepAnalysisRecord | null>(null);
 
   const gasSourceCode = `/**
  * HR Analytics App - Backend Source Code (v1.3.1)
@@ -213,13 +215,16 @@ function upsertRow(sheet, keyCol, keyVal, newRow) {
     try {
       const res = await analyzeHRCompetency(emp?.name || "", empResults, customInstruction);
       setHrAnalysisResult(res);
-      await onSaveHRAnalysis({
+      const newRecord: DeepAnalysisRecord = {
+        id: Date.now().toString(),
         employeeId: targetId,
         employeeName: emp?.name || "不明",
         date: new Date().toISOString(),
         content: res,
         instructionUsed: customInstruction
-      });
+      };
+      await onSaveHRAnalysis(newRecord);
+      setSelectedHrAnalysis(newRecord);
       await onDeletePsychApplication(targetId);
       onRefresh();
     } catch (e) {
@@ -442,14 +447,19 @@ function upsertRow(sheet, keyCol, keyVal, newRow) {
             🔄 更新
           </button>
         </div>
-        <div className="flex bg-slate-100 p-1 rounded-xl">
-          <button onClick={() => setViewMode('growth')} className={`px-6 py-2 text-xs font-black rounded-lg transition-all ${viewMode === 'growth' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>受講進捗</button>
-          <button onClick={() => setViewMode('hr_mgmt')} className={`px-6 py-2 text-xs font-black rounded-lg transition-all ${viewMode === 'hr_mgmt' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>深層心理分析</button>
-          <button onClick={() => setViewMode('employees')} className={`px-6 py-2 text-xs font-black rounded-lg transition-all ${viewMode === 'employees' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>社員管理</button>
-          <button onClick={() => setViewMode('deadlines')} className={`px-6 py-2 text-xs font-black rounded-lg transition-all ${viewMode === 'deadlines' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>締切管理</button>
-          <button onClick={() => setViewMode('setup')} className={`px-6 py-2 text-xs font-black rounded-lg transition-all ${viewMode === 'setup' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>システム設定</button>
+        <div className="flex flex-wrap bg-slate-100 p-1 rounded-xl gap-0.5">
+          <button onClick={() => setViewMode('growth')} className={`px-5 py-2 text-xs font-black rounded-lg transition-all ${viewMode === 'growth' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>受講進捗</button>
+          <button onClick={() => setViewMode('individual')} className={`px-5 py-2 text-xs font-black rounded-lg transition-all ${viewMode === 'individual' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500'}`}>HR個別管理</button>
+          <button onClick={() => setViewMode('hr_mgmt')} className={`px-5 py-2 text-xs font-black rounded-lg transition-all ${viewMode === 'hr_mgmt' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>深層心理分析</button>
+          <button onClick={() => setViewMode('employees')} className={`px-5 py-2 text-xs font-black rounded-lg transition-all ${viewMode === 'employees' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>社員管理</button>
+          <button onClick={() => setViewMode('deadlines')} className={`px-5 py-2 text-xs font-black rounded-lg transition-all ${viewMode === 'deadlines' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>締切管理</button>
+          <button onClick={() => setViewMode('setup')} className={`px-5 py-2 text-xs font-black rounded-lg transition-all ${viewMode === 'setup' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>システム設定</button>
         </div>
       </div>
+
+      {viewMode === 'individual' && (
+        <HRIndividualManager employees={employees} results={results} trainings={trainings} />
+      )}
 
       {viewMode === 'growth' && (
         <div className="bg-white rounded-[2rem] border shadow-sm overflow-hidden">
@@ -592,10 +602,104 @@ function upsertRow(sheet, keyCol, keyVal, newRow) {
               </button>
             </div>
           </div>
-          <div className="lg:col-span-2 bg-white p-10 rounded-[2rem] border shadow-sm min-h-[500px]">
-            <h3 className="text-xl font-black border-b pb-4 mb-6">解明レポート</h3>
-            <div className="prose prose-slate max-w-none text-sm leading-relaxed whitespace-pre-wrap">
-              {hrAnalysisResult || "左のパネルから社員を選択して分析を開始してください。"}
+          <div className="lg:col-span-2 flex flex-col gap-6">
+
+            {/* ── 過去の分析一覧 ── */}
+            <div className="bg-white rounded-[2rem] border shadow-sm overflow-hidden">
+              <div className="px-8 py-5 border-b bg-slate-50/60 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-lg font-black text-slate-800">深層心理分析 履歴</h3>
+                  {hrAnalyses.length > 0 && (
+                    <span className="bg-violet-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full">
+                      {hrAnalyses.length}件
+                    </span>
+                  )}
+                </div>
+                {selectedHrAnalysis && (
+                  <button
+                    onClick={() => setSelectedHrAnalysis(null)}
+                    className="text-[10px] font-black text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    選択解除
+                  </button>
+                )}
+              </div>
+
+              {hrAnalyses.length === 0 ? (
+                <div className="p-10 text-center">
+                  <p className="text-slate-300 text-3xl mb-3">📂</p>
+                  <p className="text-slate-400 font-bold text-sm">まだ分析結果がありません</p>
+                  <p className="text-slate-300 font-bold text-xs mt-1">左パネルで分析を実行すると履歴が表示されます</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 max-h-72 overflow-y-auto">
+                  {[...hrAnalyses]
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .map(record => {
+                      const isSelected = selectedHrAnalysis?.id === record.id;
+                      return (
+                        <button
+                          key={record.id}
+                          onClick={() => setSelectedHrAnalysis(isSelected ? null : record)}
+                          className={`w-full text-left px-8 py-5 hover:bg-violet-50 transition-colors flex items-center justify-between gap-4 ${isSelected ? 'bg-violet-50 border-l-4 border-violet-500' : 'border-l-4 border-transparent'}`}
+                        >
+                          <div className="flex items-center gap-4 min-w-0">
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-black text-sm ${isSelected ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                              {record.employeeName.charAt(0)}
+                            </div>
+                            <div className="min-w-0">
+                              <p className={`font-black text-sm truncate ${isSelected ? 'text-violet-700' : 'text-slate-800'}`}>
+                                {record.employeeName}
+                              </p>
+                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                                {new Date(record.date).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                {record.instructionUsed && (
+                                  <span className="ml-2 text-violet-400">カスタム指示あり</span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                          <span className={`text-[10px] font-black px-3 py-1 rounded-lg shrink-0 ${isSelected ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                            {isSelected ? '表示中' : '詳細を見る'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+
+            {/* ── 選択中レポート全文 ── */}
+            <div className="bg-white rounded-[2rem] border shadow-sm p-10 min-h-[320px] flex flex-col">
+              {selectedHrAnalysis ? (
+                <>
+                  <div className="flex items-start justify-between mb-6 border-b pb-5">
+                    <div>
+                      <h3 className="text-xl font-black text-slate-800">{selectedHrAnalysis.employeeName} さんの深層心理レポート</h3>
+                      <p className="text-xs font-bold text-slate-400 mt-1">
+                        {new Date(selectedHrAnalysis.date).toLocaleString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 分析
+                      </p>
+                      {selectedHrAnalysis.instructionUsed && (
+                        <p className="text-xs font-bold text-violet-500 mt-1">
+                          指示: {selectedHrAnalysis.instructionUsed}
+                        </p>
+                      )}
+                    </div>
+                    <div className="w-12 h-12 rounded-2xl bg-violet-100 flex items-center justify-center text-xl font-black text-violet-600 shrink-0">
+                      {selectedHrAnalysis.employeeName.charAt(0)}
+                    </div>
+                  </div>
+                  <div className="prose prose-slate max-w-none text-sm leading-relaxed whitespace-pre-wrap flex-1 text-slate-700">
+                    {selectedHrAnalysis.content}
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center flex-1 text-center">
+                  <p className="text-4xl mb-4">☝️</p>
+                  <p className="text-slate-500 font-black">上のリストから対象者をクリックしてください</p>
+                  <p className="text-slate-300 font-bold text-xs mt-2">分析レポートの全文が表示されます</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
