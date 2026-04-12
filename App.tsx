@@ -593,20 +593,31 @@ const App: React.FC = () => {
 
         if (Array.isArray(hrRaw)) {
           const parsedHR = hrRaw
-            .map((h: any) => ({
-              id: String(getFlexibleVal(h, ["id"]) || ""),
-              employeeId: normalizeId(
-                getFlexibleVal(h, ["employeeid", "empId"]),
-              ),
-              employeeName: String(
-                getFlexibleVal(h, ["employeename", "userName"]) || "",
-              ),
-              date: String(getFlexibleVal(h, ["date"]) || ""),
-              content: String(getFlexibleVal(h, ["content"]) || ""),
-              instructionUsed: String(
-                getFlexibleVal(h, ["instructionused"]) || "",
-              ),
-            }))
+            .map((h: any) => {
+              const rawFY = getFlexibleVal(h, ["fiscalyear", "fiscalYear", "fy"]);
+              const fiscalYear = rawFY !== undefined && rawFY !== "" && rawFY !== null
+                ? Number(rawFY)
+                : 48; // 既存データは48期として扱う
+              let psychMods: Record<string, number> | undefined;
+              const rawPsychMods = getFlexibleVal(h, ["psychmods", "psychMods"]);
+              if (rawPsychMods) {
+                try {
+                  psychMods = typeof rawPsychMods === "string"
+                    ? JSON.parse(rawPsychMods)
+                    : rawPsychMods;
+                } catch {}
+              }
+              return {
+                id: String(getFlexibleVal(h, ["id"]) || ""),
+                employeeId: normalizeId(getFlexibleVal(h, ["employeeid", "empId"])),
+                employeeName: String(getFlexibleVal(h, ["employeename", "userName"]) || ""),
+                date: String(getFlexibleVal(h, ["date"]) || ""),
+                content: String(getFlexibleVal(h, ["content"]) || ""),
+                instructionUsed: String(getFlexibleVal(h, ["instructionused"]) || ""),
+                fiscalYear,
+                psychMods,
+              };
+            })
             .filter((h) => h.employeeId && h.content);
           setHrAnalyses(parsedHR);
         }
@@ -2456,6 +2467,8 @@ const App: React.FC = () => {
                   annualSummaries={annualSummaries}
                   psychApplications={psychApplications}
                   onDeletePsychApplication={handleDeletePsychApplication}
+                  currentEmployeeId={normalizeId(effectiveAuth?.employeeId || "")}
+                  isHRRole={effectiveAuth?.role === Role.HR}
                 />
               ) : (
                 <AnnouncementManager

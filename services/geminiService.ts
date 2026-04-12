@@ -491,6 +491,78 @@ export const analyzeIndividualPerformance = async (
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────
+// 深層心理分析テキストからコンピテンシーモディファイアを抽出
+// 返値: 各コンピテンシーキーに対する -1.0〜+1.0 の修正値
+// ─────────────────────────────────────────────────────────────────────
+export const extractPsychModsFromAnalysis = async (
+  analysisContent: string,
+): Promise<Record<string, number>> => {
+  const ai = getAIClient();
+  const competencyKeys = [
+    "problemSolving", "criticalThinking", "learningAgility",
+    "interpersonal", "stakeholder", "presentation",
+    "decisionMaking", "teamManagement", "coaching",
+    "teamwork", "psychSafety", "crossDept",
+    "creativity", "improvement", "ideaExecution",
+  ];
+
+  const prompt = `以下の深層心理分析レポートから、各コンピテンシーに対する影響度を数値化してください。
+
+【分析レポート】
+${analysisContent}
+
+【コンピテンシーキー一覧】
+- problemSolving: 問題解決力
+- criticalThinking: 批判的思考
+- learningAgility: 学習敏捷性
+- interpersonal: 対人コミュニケーション
+- stakeholder: ステークホルダー調整力
+- presentation: プレゼンテーション力
+- decisionMaking: 意思決定力
+- teamManagement: チームマネジメント
+- coaching: コーチング・育成力
+- teamwork: チームワーク
+- psychSafety: 心理的安全性の醸成
+- crossDept: 部門横断の協働力
+- creativity: 創造性
+- improvement: 改善提案力
+- ideaExecution: 新規アイデアの実行力
+
+レポートの「得意」「強み」に関する記述はプラス値（+0.1〜+1.0）、
+「不得意」「弱み」「課題」に関する記述はマイナス値（-0.1〜-1.0）、
+「注意点」「リスク」はやや小さいマイナス値（-0.1〜-0.5）として反映してください。
+言及のないものは 0 とし、全てのキーに値を返してください。
+`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.0-flash-exp",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: Object.fromEntries(competencyKeys.map(k => [k, { type: Type.NUMBER }])),
+          required: competencyKeys,
+        },
+      },
+    });
+    const text = response.text;
+    if (!text) return {};
+    const parsed = JSON.parse(text);
+    // clamp each value to [-1, 1]
+    const result: Record<string, number> = {};
+    competencyKeys.forEach(k => {
+      result[k] = +Math.min(1, Math.max(-1, parsed[k] ?? 0)).toFixed(2);
+    });
+    return result;
+  } catch (e) {
+    console.error("PsychMods extraction error:", e);
+    return {};
+  }
+};
+
 export const analyzeHRCompetency = async (
   name: string,
   results: TestResult[],

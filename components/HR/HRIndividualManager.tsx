@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Employee, TestResult, Training } from '../../types';
+import { Employee, TestResult, Training, DeepAnalysisRecord, PsychApplication } from '../../types';
 import * as XLSX from 'xlsx';
 import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
@@ -85,10 +85,11 @@ const computeFinalScores = (
   sales: Record<string, number>,
   comp: Record<string, number>,
   mgr: Record<string, number>,
+  psych: Record<string, number> = {},
 ): Record<string, number> => {
   const result: Record<string, number> = {};
   ALL_ITEM_KEYS.forEach(k => {
-    const autoScore = clamp((raw[k] ?? 3) + (swot[k] ?? 0) + (sales[k] ?? 0) + (comp[k] ?? 0));
+    const autoScore = clamp((raw[k] ?? 3) + (swot[k] ?? 0) + (sales[k] ?? 0) + (comp[k] ?? 0) + (psych[k] ?? 0));
     const mgrScore  = mgr[KEY_TO_GROUP[k]] ?? 3;
     result[k] = +( autoScore * 0.7 + mgrScore * 0.3 ).toFixed(2);
   });
@@ -338,13 +339,15 @@ interface HRIndividualManagerProps {
   employees: Employee[];
   results: TestResult[];
   trainings: Training[];
+  hrAnalyses?: DeepAnalysisRecord[];
+  psychApplications?: PsychApplication[];
 }
 
 // ─────────────────────────────────────────────────────────────
 // メインコンポーネント
 // ─────────────────────────────────────────────────────────────
 export const HRIndividualManager: React.FC<HRIndividualManagerProps> = ({
-  employees, results, trainings,
+  employees, results, trainings, hrAnalyses = [], psychApplications = [],
 }) => {
   // ── 検索・絞り込み
   const [searchText,   setSearchText]   = useState('');
@@ -415,10 +418,27 @@ export const HRIndividualManager: React.FC<HRIndividualManagerProps> = ({
     return computeComplianceMods(currentEmployee.id, results, trainings);
   }, [currentEmployee?.id, results, trainings]);
 
+  // ─── 深層心理モディファイア（最新年度の分析から取得）
+  const psychMods = useMemo((): Record<string, number> => {
+    if (!currentEmployee || !hrAnalyses.length) return {};
+    // 当該社員の分析履歴を取得し、最新年度のものを優先
+    const empAnalyses = hrAnalyses.filter(
+      a => String(a.employeeId).trim().toUpperCase() === String(currentEmployee.id).trim().toUpperCase()
+    );
+    if (!empAnalyses.length) return {};
+    // 最新年度 → 同年度内で最新日時のレコードを選択
+    const sorted = [...empAnalyses].sort((a, b) => {
+      const fyDiff = (b.fiscalYear ?? 0) - (a.fiscalYear ?? 0);
+      if (fyDiff !== 0) return fyDiff;
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
+    return sorted[0].psychMods ?? {};
+  }, [currentEmployee?.id, hrAnalyses]);
+
   // ─── 最終スコア計算
   const finalScores = useMemo(() =>
-    computeFinalScores(rawScores, swotMods, salesMods, complianceMods, mgrScores),
-    [rawScores, swotMods, salesMods, complianceMods, mgrScores]
+    computeFinalScores(rawScores, swotMods, salesMods, complianceMods, mgrScores, psychMods),
+    [rawScores, swotMods, salesMods, complianceMods, mgrScores, psychMods]
   );
 
   // ─── レーダー用データ（最終スコアのカテゴリ平均）
@@ -650,12 +670,36 @@ export const HRIndividualManager: React.FC<HRIndividualManagerProps> = ({
             {/* スコア計算の説明バナー */}
             <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex flex-wrap gap-4 items-center text-xs font-bold text-indigo-700">
               <span className="bg-indigo-600 text-white px-3 py-1 rounded-lg">最終スコア</span>
-              <span>= 自動評価（SWOT + 売上 + コンプライアンス）×</span>
+              <span>= 自動評価（SWOT + 売上 + コンプライアンス + 深層心理）×</span>
               <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-lg font-black">70%</span>
               <span>+</span>
               <span>部長評価 ×</span>
               <span className="bg-amber-100 text-amber-700 px-2 py-1 rounded-lg font-black">30%</span>
             </div>
+            {/* 深層心理連動バナー */}
+            {Object.keys(psychMods).length > 0 ? (
+              <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4 flex items-center gap-3 text-xs font-bold text-violet-700">
+                <span className="text-lg">🧠</span>
+                <div>
+                  <p className="font-black">深層心理分析データ連動中</p>
+                  <p className="font-bold text-violet-500 mt-0.5">
+                    {(() => {
+                      const empAnalyses = hrAnalyses.filter(a => String(a.employeeId).trim().toUpperCase() === String(currentEmployee?.id).trim().toUpperCase());
+                      const latest = [...empAnalyses].sort((a, b) => {
+                        const fyDiff = (b.fiscalYear ?? 0) - (a.fiscalYear ?? 0);
+                        return fyDiff !== 0 ? fyDiff : new Date(b.date).getTime() - new Date(a.date).getTime();
+                      })[0];
+                      return latest ? `${latest.fiscalYear ? `${latest.fiscalYear}期` : ''} ${new Date(latest.date).toLocaleDateString('ja-JP')} の分析を反映中` : '';
+                    })()}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center gap-3 text-xs font-bold text-slate-400">
+                <span className="text-lg">🧠</span>
+                <p>深層心理分析未実施 — 深層心理分析タブで分析を実行するとコンピテンシーに自動反映されます</p>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
               {/* ── レーダーチャート ── */}
@@ -709,7 +753,8 @@ export const HRIndividualManager: React.FC<HRIndividualManagerProps> = ({
                         const sM    = swotMods[item.key] ?? 0;
                         const slM   = salesMods[item.key] ?? 0;
                         const cM    = complianceMods[item.key] ?? 0;
-                        const auto  = clamp(raw + sM + slM + cM);
+                        const pM    = psychMods[item.key] ?? 0;
+                        const auto  = clamp(raw + sM + slM + cM + pM);
                         const final = finalScores[item.key] ?? 3;
                         return (
                           <div key={item.key} className="space-y-1.5">
@@ -719,6 +764,7 @@ export const HRIndividualManager: React.FC<HRIndividualManagerProps> = ({
                                 <ModBadge v={sM}  label="SWOT"   />
                                 <ModBadge v={slM} label="売上"   />
                                 <ModBadge v={cM}  label="研修"   />
+                                <ModBadge v={pM}  label="深層心理" />
                               </div>
                               <span className="ml-auto text-[10px] font-black text-slate-400">
                                 自動: <span className="text-slate-600">{auto.toFixed(1)}</span>

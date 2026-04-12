@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { TestResult, Training, Employee, Role, DeepAnalysisRecord, WrongAnswerAnalysis, PsychApplication } from '../../types';
-import { analyzeHRCompetency } from '../../services/geminiService';
+import { analyzeHRCompetency, extractPsychModsFromAnalysis } from '../../services/geminiService';
 import { HRIndividualManager } from './HRIndividualManager';
 
 interface ReportingDashboardProps {
@@ -23,6 +23,8 @@ interface ReportingDashboardProps {
   annualSummaries?: any[];
   psychApplications: PsychApplication[];
   onDeletePsychApplication: (employeeId: string) => Promise<void>;
+  currentEmployeeId?: string; // ログイン中の社員ID（プライバシー制御用）
+  isHRRole?: boolean; // HR権限かどうか（全員分析を閲覧可）
 }
 
 // preScore と postScore が両方とも有効な数値であれば「受講済み」と判定
@@ -36,7 +38,7 @@ const isCompleted = (result: TestResult | undefined): boolean => {
   );
 };
 
-export const ReportingDashboard: React.FC<ReportingDashboardProps> = ({ trainings, results, employees, hrAnalyses, wrongAnswerAnalyses, onUpdateEmployeeRole, onRefresh, gasUrl, onUpdateGasUrl, clliqUrl, onUpdateClliqUrl, onSaveHRAnalysis, onRunManualAnalysis, onImpersonate, onOpenSelectKey, annualSummaries, psychApplications, onDeletePsychApplication }) => {
+export const ReportingDashboard: React.FC<ReportingDashboardProps> = ({ trainings, results, employees, hrAnalyses, wrongAnswerAnalyses, onUpdateEmployeeRole, onRefresh, gasUrl, onUpdateGasUrl, clliqUrl, onUpdateClliqUrl, onSaveHRAnalysis, onRunManualAnalysis, onImpersonate, onOpenSelectKey, annualSummaries, psychApplications, onDeletePsychApplication, currentEmployeeId, isHRRole }) => {
   const [viewMode, setViewMode] = useState<'employees' | 'growth' | 'hr_mgmt' | 'setup' | 'deadlines' | 'individual'>('growth');
   const [localUrl, setLocalUrl] = useState(gasUrl);
   const [localClliqUrl, setLocalClliqUrl] = useState(clliqUrl);
@@ -61,7 +63,11 @@ export const ReportingDashboard: React.FC<ReportingDashboardProps> = ({ training
   const [hrAnalysisResult, setHrAnalysisResult] = useState<string>('');
   const [customInstruction, setCustomInstruction] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isBulkAnalyzing, setIsBulkAnalyzing] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [selectedHrAnalysis, setSelectedHrAnalysis] = useState<DeepAnalysisRecord | null>(null);
+  // 年度設定（一括分析・新規分析で使用）
+  const [analysisFiscalYear, setAnalysisFiscalYear] = useState<number>(48);
 
   const gasSourceCode = `/**
  * HR Analytics App - Backend Source Code (v1.3.1)
@@ -203,7 +209,7 @@ function upsertRow(sheet, keyCol, keyVal, newRow) {
 `;
 
 
-  const handleDeepAnalysis = async (overrideEmployeeId?: string) => {
+  const handleDeepAnalysis = async (overrideEmployeeId?: string, fiscalYear?: number) => {
     const targetId = overrideEmployeeId || selectedEmployeeId;
     if (!targetId) return alert("社員を選択してください。");
     if (overrideEmployeeId) setSelectedEmployeeId(overrideEmployeeId);
@@ -211,17 +217,23 @@ function upsertRow(sheet, keyCol, keyVal, newRow) {
     const empResults = results.filter(r => r.employeeId === targetId);
     if (empResults.length === 0) return alert("受講データがありません。");
 
+    const usedFiscalYear = fiscalYear ?? analysisFiscalYear;
+
     setIsAnalyzing(true);
     try {
       const res = await analyzeHRCompetency(emp?.name || "", empResults, customInstruction);
       setHrAnalysisResult(res);
+      // 深層心理→コンピテンシーモディファイアを抽出
+      const psychMods = await extractPsychModsFromAnalysis(res);
       const newRecord: DeepAnalysisRecord = {
         id: Date.now().toString(),
         employeeId: targetId,
         employeeName: emp?.name || "不明",
         date: new Date().toISOString(),
         content: res,
-        instructionUsed: customInstruction
+        instructionUsed: customInstruction,
+        fiscalYear: usedFiscalYear,
+        psychMods,
       };
       await onSaveHRAnalysis(newRecord);
       setSelectedHrAnalysis(newRecord);
@@ -232,6 +244,53 @@ function upsertRow(sheet, keyCol, keyVal, newRow) {
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  // 全社員一括深層心理分析
+  const handleBulkAnalysis = async () => {
+    const targets = employees.filter(emp => results.some(r => r.employeeId === emp.id));
+    if (targets.length === 0) return alert("受講データのある社員がいません。");
+    if (!window.confirm(`${analysisFiscalYear}期として、受講データのある社員 ${targets.length}名の深層心理分析を実行します。\nすでに${analysisFiscalYear}期の分析がある社員はスキップします。\n\n実行しますか？`)) return;
+
+    setIsBulkAnalyzing(true);
+    setBulkProgress({ done: 0, total: targets.length });
+
+    let done = 0;
+    for (const emp of targets) {
+      // 同一年度の分析が既にある場合はスキップ
+      const alreadyDone = hrAnalyses.some(
+        a => a.employeeId === emp.id && a.fiscalYear === analysisFiscalYear
+      );
+      if (alreadyDone) {
+        done++;
+        setBulkProgress({ done, total: targets.length });
+        continue;
+      }
+      try {
+        const empResults = results.filter(r => r.employeeId === emp.id);
+        const res = await analyzeHRCompetency(emp.name, empResults, "");
+        const psychMods = await extractPsychModsFromAnalysis(res);
+        const newRecord: DeepAnalysisRecord = {
+          id: Date.now().toString() + emp.id,
+          employeeId: emp.id,
+          employeeName: emp.name,
+          date: new Date().toISOString(),
+          content: res,
+          fiscalYear: analysisFiscalYear,
+          psychMods,
+        };
+        await onSaveHRAnalysis(newRecord);
+      } catch (e) {
+        console.error(`${emp.name} の分析に失敗しました:`, e);
+      }
+      done++;
+      setBulkProgress({ done, total: targets.length });
+    }
+
+    setIsBulkAnalyzing(false);
+    setBulkProgress(null);
+    onRefresh();
+    alert(`一括分析が完了しました。（${done}名処理）`);
   };
 
   const handleSaveDeadline = (trainingId: string, deadline1: string, deadline2: string) => {
@@ -458,7 +517,7 @@ function upsertRow(sheet, keyCol, keyVal, newRow) {
       </div>
 
       {viewMode === 'individual' && (
-        <HRIndividualManager employees={employees} results={results} trainings={trainings} />
+        <HRIndividualManager employees={employees} results={results} trainings={trainings} hrAnalyses={hrAnalyses} psychApplications={psychApplications} />
       )}
 
       {viewMode === 'growth' && (
@@ -568,7 +627,7 @@ function upsertRow(sheet, keyCol, keyVal, newRow) {
                     return (
                       <button
                         key={app.employeeId}
-                        onClick={() => handleDeepAnalysis(app.employeeId)}
+                        onClick={() => handleDeepAnalysis(app.employeeId, analysisFiscalYear)}
                         disabled={isAnalyzing || !hasData}
                         className="w-full text-left p-4 bg-violet-50 hover:bg-violet-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-2xl border border-violet-100 transition-all group"
                       >
@@ -591,15 +650,68 @@ function upsertRow(sheet, keyCol, keyVal, newRow) {
             )}
 
             <div className="bg-white p-8 rounded-[2rem] border shadow-sm space-y-6">
-              <h3 className="text-xl font-black">個人深層分析</h3>
-              <select className="w-full p-4 rounded-xl border-2 font-bold" value={selectedEmployeeId} onChange={e => setSelectedEmployeeId(e.target.value)}>
-                <option value="">社員を選択</option>
-                {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-              </select>
-              <textarea className="w-full p-4 rounded-xl border-2 h-32 text-sm" placeholder="特定のアドバイスや指示を入力..." value={customInstruction} onChange={e => setCustomInstruction(e.target.value)} />
-              <button onClick={() => handleDeepAnalysis()} disabled={isAnalyzing || !selectedEmployeeId} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-black shadow-lg disabled:bg-slate-200">
-                {isAnalyzing ? "解析中..." : "論理的解明分析を開始"}
-              </button>
+              {/* 年度設定 */}
+              <div>
+                <h3 className="text-xl font-black mb-4">深層心理分析設定</h3>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">分析対象年度</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min={1}
+                      max={999}
+                      value={analysisFiscalYear}
+                      onChange={e => setAnalysisFiscalYear(parseInt(e.target.value) || 48)}
+                      className="flex-1 p-3 rounded-xl border-2 font-black text-lg text-center focus:border-indigo-400 focus:outline-none"
+                    />
+                    <span className="font-black text-slate-500 text-lg">期</span>
+                  </div>
+                  <p className="text-[10px] font-bold text-slate-400">分析を実行する前に年度を設定してください</p>
+                </div>
+              </div>
+
+              {/* 全員一括分析ボタン */}
+              <div className="p-5 bg-violet-50 border-2 border-violet-100 rounded-2xl space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🧠</span>
+                  <h4 className="font-black text-violet-800">全社員一括深層心理分析</h4>
+                </div>
+                <p className="text-[10px] font-bold text-violet-500">受講データのある全社員を{analysisFiscalYear}期として分析します。既に{analysisFiscalYear}期の分析済みはスキップされます。</p>
+                {isBulkAnalyzing && bulkProgress && (
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[10px] font-black text-violet-700">
+                      <span>分析中...</span>
+                      <span>{bulkProgress.done} / {bulkProgress.total}</span>
+                    </div>
+                    <div className="w-full bg-violet-100 rounded-full h-2">
+                      <div
+                        className="bg-violet-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${(bulkProgress.done / bulkProgress.total) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+                <button
+                  onClick={handleBulkAnalysis}
+                  disabled={isBulkAnalyzing || isAnalyzing}
+                  className="w-full py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-black shadow-lg shadow-violet-100 disabled:bg-slate-200 disabled:text-slate-400 transition-all text-sm"
+                >
+                  {isBulkAnalyzing ? `解析中 (${bulkProgress?.done ?? 0}/${bulkProgress?.total ?? 0})...` : `🚀 ${analysisFiscalYear}期 全員を一括分析`}
+                </button>
+              </div>
+
+              {/* 個人分析 */}
+              <div className="pt-2 border-t border-slate-100 space-y-4">
+                <h4 className="font-black text-slate-700">個人深層分析</h4>
+                <select className="w-full p-4 rounded-xl border-2 font-bold" value={selectedEmployeeId} onChange={e => setSelectedEmployeeId(e.target.value)}>
+                  <option value="">社員を選択</option>
+                  {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+                <textarea className="w-full p-4 rounded-xl border-2 h-28 text-sm" placeholder="特定のアドバイスや指示を入力..." value={customInstruction} onChange={e => setCustomInstruction(e.target.value)} />
+                <button onClick={() => handleDeepAnalysis()} disabled={isAnalyzing || isBulkAnalyzing || !selectedEmployeeId} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-black shadow-lg disabled:bg-slate-200 transition-all">
+                  {isAnalyzing ? "解析中..." : `${analysisFiscalYear}期として論理的解明分析を開始`}
+                </button>
+              </div>
             </div>
           </div>
           <div className="lg:col-span-2 flex flex-col gap-6">
@@ -614,6 +726,15 @@ function upsertRow(sheet, keyCol, keyVal, newRow) {
                       {hrAnalyses.length}件
                     </span>
                   )}
+                  {/* 凡例 */}
+                  <div className="flex items-center gap-3 ml-2">
+                    <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500">
+                      <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" /> 分析完了
+                    </span>
+                    <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500">
+                      <span className="w-3 h-3 rounded-full bg-orange-400 inline-block" /> リクエスト済
+                    </span>
+                  </div>
                 </div>
                 {selectedHrAnalysis && (
                   <button
@@ -625,48 +746,97 @@ function upsertRow(sheet, keyCol, keyVal, newRow) {
                 )}
               </div>
 
-              {hrAnalyses.length === 0 ? (
-                <div className="p-10 text-center">
-                  <p className="text-slate-300 text-3xl mb-3">📂</p>
-                  <p className="text-slate-400 font-bold text-sm">まだ分析結果がありません</p>
-                  <p className="text-slate-300 font-bold text-xs mt-1">左パネルで分析を実行すると履歴が表示されます</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-100 max-h-72 overflow-y-auto">
-                  {[...hrAnalyses]
-                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                    .map(record => {
-                      const isSelected = selectedHrAnalysis?.id === record.id;
-                      return (
-                        <button
-                          key={record.id}
-                          onClick={() => setSelectedHrAnalysis(isSelected ? null : record)}
-                          className={`w-full text-left px-8 py-5 hover:bg-violet-50 transition-colors flex items-center justify-between gap-4 ${isSelected ? 'bg-violet-50 border-l-4 border-violet-500' : 'border-l-4 border-transparent'}`}
-                        >
-                          <div className="flex items-center gap-4 min-w-0">
-                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-black text-sm ${isSelected ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                              {record.employeeName.charAt(0)}
-                            </div>
-                            <div className="min-w-0">
-                              <p className={`font-black text-sm truncate ${isSelected ? 'text-violet-700' : 'text-slate-800'}`}>
-                                {record.employeeName}
-                              </p>
-                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">
-                                {new Date(record.date).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                {record.instructionUsed && (
-                                  <span className="ml-2 text-violet-400">カスタム指示あり</span>
-                                )}
-                              </p>
-                            </div>
+              {/* 全社員のステータス一覧（申請済・分析済） */}
+              {(() => {
+                // 分析済み + 申請済み（未分析）をまとめてリスト化
+                const analyzedIds = new Set(hrAnalyses.map(a => a.employeeId));
+                const pendingApps = psychApplications.filter(app => !analyzedIds.has(app.employeeId));
+
+                // プライバシー: HR権限は全員表示、それ以外は自分のみ
+                const isHRView = isHRRole !== false;
+                const visibleAnalyses = isHRView
+                  ? hrAnalyses
+                  : hrAnalyses.filter(a => a.employeeId === currentEmployeeId);
+
+                const totalVisible = visibleAnalyses.length + (isHRView ? pendingApps.length : 0);
+                if (totalVisible === 0) return (
+                  <div className="p-10 text-center">
+                    <p className="text-slate-300 text-3xl mb-3">📂</p>
+                    <p className="text-slate-400 font-bold text-sm">まだ分析結果がありません</p>
+                    <p className="text-slate-300 font-bold text-xs mt-1">左パネルで分析を実行すると履歴が表示されます</p>
+                  </div>
+                );
+
+                return (
+                  <div className="divide-y divide-slate-100 max-h-72 overflow-y-auto">
+                    {/* 申請済み（未分析）— オレンジ — HRビューのみ表示 */}
+                    {isHRView && pendingApps.map(app => (
+                      <div key={`pending-${app.employeeId}`}
+                        className="w-full text-left px-8 py-4 flex items-center gap-4 bg-orange-50/40 border-l-4 border-orange-300">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <span className="w-3 h-3 rounded-full bg-orange-400 shrink-0" />
+                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-black text-sm bg-orange-100 text-orange-600`}>
+                            {app.employeeName.charAt(0)}
                           </div>
-                          <span className={`text-[10px] font-black px-3 py-1 rounded-lg shrink-0 ${isSelected ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                            {isSelected ? '表示中' : '詳細を見る'}
-                          </span>
-                        </button>
-                      );
-                    })}
-                </div>
-              )}
+                          <div className="min-w-0">
+                            <p className="font-black text-sm text-orange-700 truncate">{app.employeeName}</p>
+                            <p className="text-[10px] font-bold text-orange-400 mt-0.5">
+                              {new Date(app.appliedAt).toLocaleDateString('ja-JP')} リクエスト
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-black px-3 py-1 rounded-lg bg-orange-100 text-orange-600 shrink-0">未分析</span>
+                      </div>
+                    ))}
+                    {/* 分析完了 — 青 */}
+                    {[...visibleAnalyses]
+                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                      .map(record => {
+                        const isSelected = selectedHrAnalysis?.id === record.id;
+                        // プライバシー制御: リクエストなしの一括分析は本人のみ閲覧可
+                        const hasApplied = psychApplications.some(app => app.employeeId === record.employeeId);
+                        const isOwn = record.employeeId === currentEmployeeId;
+                        // HR権限は全員OK, 本人かつ申請済みもOK
+                        const canView = isHRView || isOwn;
+                        if (!canView) return null;
+                        return (
+                          <button
+                            key={record.id}
+                            onClick={() => setSelectedHrAnalysis(isSelected ? null : record)}
+                            className={`w-full text-left px-8 py-5 hover:bg-violet-50 transition-colors flex items-center justify-between gap-4 ${isSelected ? 'bg-violet-50 border-l-4 border-violet-500' : 'border-l-4 border-transparent'}`}
+                          >
+                            <div className="flex items-center gap-4 min-w-0">
+                              <span className="w-3 h-3 rounded-full bg-blue-500 shrink-0" />
+                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-black text-sm ${isSelected ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                                {record.employeeName.charAt(0)}
+                              </div>
+                              <div className="min-w-0">
+                                <p className={`font-black text-sm truncate ${isSelected ? 'text-violet-700' : 'text-slate-800'}`}>
+                                  {record.employeeName}
+                                  {record.fiscalYear && (
+                                    <span className="ml-2 text-[10px] font-black bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-md">{record.fiscalYear}期</span>
+                                  )}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                                  {new Date(record.date).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                  {record.instructionUsed && (
+                                    <span className="ml-2 text-violet-400">カスタム指示あり</span>
+                                  )}
+                                  {record.psychMods && Object.keys(record.psychMods).length > 0 && (
+                                    <span className="ml-2 text-emerald-500">コンピテンシー連動済</span>
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                            <span className={`text-[10px] font-black px-3 py-1 rounded-lg shrink-0 ${isSelected ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                              {isSelected ? '表示中' : '詳細を見る'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* ── 選択中レポート全文 ── */}

@@ -91,6 +91,8 @@ export interface DeepAnalysisRecord {
   date: string;
   content: string;
   instructionUsed?: string;
+  fiscalYear?: number; // 年度 (e.g., 48, 49)
+  psychMods?: Record<string, number>; // 深層心理→コンピテンシーモディファイア
 }
 
 export interface PsychApplication {
