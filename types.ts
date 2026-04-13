@@ -16,6 +16,29 @@ export interface Employee {
   position?: string;
   requiredTrainings?: string[]; // Training IDs that are required
   challengeTrainings?: string[]; // Training IDs that are optional
+  // ── 拡張個人データ ──────────────────────────────
+  employeeNo?: string;       // 社員番号（別途管理番号）
+  hireDate?: string;         // 入社日 (YYYY-MM-DD)
+  email?: string;            // メールアドレス
+  phone?: string;            // 電話番号
+  managerId?: string;        // 上司の社員ID
+  grade?: string;            // 等級 (例: G1, G2, M1 …)
+  employmentType?: string;   // 雇用形態 (正社員 / 契約社員 / 派遣 …)
+}
+
+// ── 役職別アクセス権限 ──────────────────────────────────────
+export type EmployeeFieldKey =
+  | 'id' | 'name' | 'department' | 'position' | 'role'
+  | 'employeeNo' | 'hireDate' | 'email' | 'phone'
+  | 'managerId' | 'grade' | 'employmentType'
+  | 'results' | 'competency' | 'psychAnalysis' | 'salesData' | 'incidents';
+
+export interface PositionPermission {
+  position: string;          // 役職名 (例: "部長", "課長", "一般")
+  viewableFields: EmployeeFieldKey[];  // 閲覧できるフィールド
+  canViewAllDept: boolean;   // 同部署全員のデータを見られるか
+  canViewSubordinates: boolean; // 部下のデータを見られるか
+  canViewOwnOnly: boolean;   // 自分のデータのみ
 }
 
 export interface Announcement {

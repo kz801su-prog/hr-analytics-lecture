@@ -285,6 +285,27 @@ const App: React.FC = () => {
               challengeTrainings: parseJSON(
                 getFlexibleVal(e, ["challengetrainings", "challenge"]),
               ),
+              employeeNo: String(
+                getFlexibleVal(e, ["employeeno", "employee_no", "employeeNo"]) || "",
+              ).trim() || undefined,
+              hireDate: String(
+                getFlexibleVal(e, ["hiredate", "hire_date", "hireDate"]) || "",
+              ).trim() || undefined,
+              email: String(
+                getFlexibleVal(e, ["email", "mail"]) || "",
+              ).trim() || undefined,
+              phone: String(
+                getFlexibleVal(e, ["phone", "tel"]) || "",
+              ).trim() || undefined,
+              managerId: String(
+                getFlexibleVal(e, ["managerid", "manager_id", "managerId"]) || "",
+              ).trim() || undefined,
+              grade: String(
+                getFlexibleVal(e, ["grade"]) || "",
+              ).trim() || undefined,
+              employmentType: String(
+                getFlexibleVal(e, ["employmenttype", "employment_type", "employmentType"]) || "",
+              ).trim() || undefined,
             }))
             .filter((e) => e.id && e.name);
           // 重複除去（IDベース、後のレコード優先でマージ）
